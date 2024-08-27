@@ -1,0 +1,65 @@
+---
+- name: Add port 80 in firewalld
+  firewalld:
+    port: 80/tcp
+    permanent: true
+    state: enabled
+
+- name: Add port 443 in firewalld
+  firewalld:
+    port: 443/tcp
+    permanent: true
+    state: enabled
+
+- name: Reload firewalld
+  service:
+    name: firewalld
+    state: reloaded
+
+- name: Check if ports 80 and 443 are added
+  command: firewall-cmd --list-all
+  register: firewalld_status
+
+- name: Print firewalld status including ports
+  debug:
+    var: firewalld_status.stdout
+
+- name: Check if SELinux is set to permissive
+  command: getenforce
+  register: selinux_status
+
+- name: Set SELinux to permissive if it is not
+  command: setenforce 0
+  when: selinux_status.stdout != "Permissive"
+
+- name: Ensure SELinux is set to permissive in configuration file
+  replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=enforcing'
+    replace: 'SELINUX=permissive'
+
+- name: Check status of UFW
+  command: ufw status
+  register: ufw_status
+  failed_when: false
+
+- name: Disable UFW if it is active
+  command: ufw disable
+  when: "ufw_status.stdout is defined and 'Status: active' in ufw_status.stdout"
+
+- name: Disable firewalld service
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Print final security checks summary
+  debug:
+    msg: |
+      Security checks completed:
+      - Firewalld ports 80 and 443 added.
+      - Firewalld status: {{ firewalld_status.stdout }}.
+      - Firewalld service has been disabled.
+      - SELinux status: {{ selinux_status.stdout }}.
+      - UFW status: {{ ufw_status.stdout | default('UFW not installed or status check failed') }}.
+
